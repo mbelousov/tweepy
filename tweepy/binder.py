@@ -225,6 +225,9 @@ def bind_api(**config):
             if self.use_cache and self.api.cache and self.method == 'GET' and result:
                 self.api.cache.store(url, result)
 
+            self.api.remaining_calls = self._remaining_calls
+            self.api.reset_time = self._reset_time
+
             return result
 
     def _call(*args, **kwargs):

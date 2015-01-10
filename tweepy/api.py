@@ -62,6 +62,9 @@ class API(object):
         if proxy:
             self.proxy['https'] = proxy
 
+        self.remaining_calls = None
+        self.reset_time = None
+
         # Attempt to explain more clearly the parser argument requirements
         # https://github.com/tweepy/tweepy/issues/421
         #
