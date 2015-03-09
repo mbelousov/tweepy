@@ -20,18 +20,21 @@ class API(object):
 
     def __init__(self, auth_handler=None,
                  host='api.twitter.com', search_host='search.twitter.com',
-                 cache=None, api_root='/1.1', search_root='',
-                 retry_count=0, retry_delay=0, retry_errors=None, timeout=60,
-                 parser=None, compression=False, wait_on_rate_limit=False,
+                 upload_host='upload.twitter.com', cache=None, api_root='/1.1',
+                 search_root='', upload_root='/1.1', retry_count=0,
+                 retry_delay=0, retry_errors=None, timeout=60, parser=None,
+                 compression=False, wait_on_rate_limit=False,
                  wait_on_rate_limit_notify=False, proxy=''):
         """ Api instance Constructor
 
         :param auth_handler:
         :param host:  url of the server of the rest api, default:'api.twitter.com'
         :param search_host: url of the search server, default:'search.twitter.com'
+        :param upload_host: url of the upload server, default:'upload.twitter.com'
         :param cache: Cache to query if a GET method is used, default:None
         :param api_root: suffix of the api version, default:'/1.1'
         :param search_root: suffix of the search version, default:''
+        :param upload_root: suffix of the upload version, default:'/1.1'
         :param retry_count: number of allowed retries, default:0
         :param retry_delay: delay in second between retries, default:0
         :param retry_errors: default:None
@@ -47,8 +50,10 @@ class API(object):
         self.auth = auth_handler
         self.host = host
         self.search_host = search_host
+        self.upload_host = upload_host
         self.api_root = api_root
         self.search_root = search_root
+        self.upload_root = upload_root
         self.cache = cache
         self.compression = compression
         self.retry_count = retry_count
@@ -173,11 +178,14 @@ class API(object):
             allowed_param=['id']
         )
 
-    @property
-    def update_status(self):
+    def update_status(self, media_ids=None, *args, **kwargs):
         """ :reference: https://dev.twitter.com/rest/reference/post/statuses/update
-            :allowed_param:'status', 'in_reply_to_status_id', 'lat', 'long', 'source', 'place_id', 'display_coordinates'
+            :allowed_param:'status', 'in_reply_to_status_id', 'lat', 'long', 'source', 'place_id', 'display_coordinates', 'media_ids'
         """
+        post_data = {}
+        if media_ids is not None:
+            post_data["media_ids"] = list_to_csv(media_ids)
+        
         return bind_api(
             api=self,
             path='/statuses/update.json',
@@ -185,7 +193,25 @@ class API(object):
             payload_type='status',
             allowed_param=['status', 'in_reply_to_status_id', 'lat', 'long', 'source', 'place_id', 'display_coordinates'],
             require_auth=True
-        )
+        )(post_data=post_data, *args, **kwargs)
+
+    def media_upload(self, filename, *args, **kwargs):
+        """ :reference: https://dev.twitter.com/rest/reference/post/media/upload
+            :allowed_param:
+        """
+        f = kwargs.pop('file', None)
+        headers, post_data = API._pack_image(filename, 3072, form_field='media', f=f)
+        kwargs.update({'headers': headers, 'post_data': post_data})
+
+        return bind_api(
+            api=self,
+            path='/media/upload.json',
+            method='POST',
+            payload_type='media',
+            allowed_param=[],
+            require_auth=True,
+            upload_api=True
+        )(*args, **kwargs)
 
     def update_with_media(self, filename, *args, **kwargs):
         """ :reference: https://dev.twitter.com/rest/reference/post/statuses/update_with_media
@@ -1247,16 +1273,16 @@ class API(object):
         if f is None:
             try:
                 if os.path.getsize(filename) > (max_size * 1024):
-                    raise TweepError('File is too big, must be less than 700kb.')
-            except os.error:
-                raise TweepError('Unable to access file')
+                    raise TweepError('File is too big, must be less than %skb.' % max_size)
+            except os.error as e:
+                raise TweepError('Unable to access file: %s' % e.strerror)
 
             # build the mulitpart-formdata body
             fp = open(filename, 'rb')
         else:
             f.seek(0, 2)  # Seek to end of file
             if f.tell() > (max_size * 1024):
-                raise TweepError('File is too big, must be less than 700kb.')
+                raise TweepError('File is too big, must be less than %skb.' % max_size)
             f.seek(0)  # Reset to beginning of file
             fp = f
 
